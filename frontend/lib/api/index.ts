@@ -1,0 +1,10 @@
+// Central re-export — import from '@/lib/api' instead of individual files
+export { api, ApiError } from './client'
+export { hackathonsApi } from './hackathons'
+export { problemsApi } from './problems'
+export { teamsApi, invitationsApi } from './teams'
+export { projectsApi, evaluationsApi, judgesApi, impactApi } from './projects'
+export { notificationsApi } from './notifications'
+export { profileApi } from './profile'
+export { adminApi } from './admin'
+export * from './types'

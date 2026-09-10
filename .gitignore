@@ -57,4 +57,4 @@ Thumbs.db
 # yarn.lock
 # pnpm-lock.yaml
 /docs/
-/frontend
+INTRODUCTION.md
