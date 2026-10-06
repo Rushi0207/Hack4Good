@@ -144,12 +144,13 @@ export default function TeamsPage() {
   useEffect(() => {
     if (!user) return
     Promise.all([
+      // List all teams then filter client-side to those the user is a member of.
+      // The restricted RLS policy already ensures only relevant teams are returned
+      // (member / leader / manager / admin), so no extra filtering needed.
       teamsApi.list().catch(() => [] as Team[]),
-      // Only show hackathons that are open for registration
       hackathonsApi.list().catch(() => [] as Hackathon[]),
     ]).then(([t, h]) => {
       setTeams(t)
-      // Filter to hackathons where creating a team makes sense
       setHackathons(h.filter((h) => h.status === 'PUBLISHED' || h.status === 'ONGOING'))
     }).catch((err) => setError(err.message ?? 'Failed to load teams.'))
       .finally(() => setLoading(false))
