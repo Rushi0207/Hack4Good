@@ -43,6 +43,10 @@ export const teamsApi = {
 }
 
 export const invitationsApi = {
+  listMine(): Promise<Array<{ id: string; team_id: string; team_name: string; status: string; created_at: string }>> {
+    return api.get('/api/invitations/me')
+  },
+
   accept(id: string): Promise<void> {
     return api.post(`/api/invitations/${id}/accept`)
   },
