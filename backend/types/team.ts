@@ -37,7 +37,7 @@ export const updateTeamSchema = z.object({
 export type UpdateTeamInput = z.infer<typeof updateTeamSchema>;
 
 export const inviteMemberSchema = z.object({
-  user_id: z.uuid(),
+  email: z.email('Must be a valid email address.'),
 });
 export type InviteMemberInput = z.infer<typeof inviteMemberSchema>;
 

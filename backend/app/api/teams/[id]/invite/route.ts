@@ -7,11 +7,14 @@ import {
 } from '@/lib/auth/authorization';
 import { badRequest, conflict, errorResponse, notFound, ok } from '@/lib/api/response';
 import { getTeamById, inviteMember } from '@/services/team.service';
+import { getProfileById } from '@/services/profile.service';
 import { inviteMemberSchema } from '@/types/team';
 
 type Params = { params: Promise<{ id: string }> };
 
-/** POST /api/teams/:id/invite — team leader or ADMIN */
+/** POST /api/teams/:id/invite — team leader or ADMIN
+ *  Body: { email: string }
+ */
 export async function POST(request: NextRequest, { params }: Params): Promise<Response> {
   try {
     const { id } = await params;
@@ -28,7 +31,11 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Re
     const parsed = inviteMemberSchema.safeParse(body);
     if (!parsed.success) return errorResponse(parsed.error);
 
-    const result = await inviteMember(id, parsed.data.user_id);
+    // Resolve the inviter's display name for the notification message
+    const inviterProfile = await getProfileById(actor.id);
+    const inviterName = inviterProfile?.full_name ?? 'A team leader';
+
+    const result = await inviteMember(id, inviterName, parsed.data.email);
     if (result.error) return conflict(result.error);
 
     return ok(result.data, 201);
