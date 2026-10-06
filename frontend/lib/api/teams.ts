@@ -29,8 +29,8 @@ export const teamsApi = {
     return api.delete(`/api/teams/${id}`)
   },
 
-  invite(id: string, userId: string): Promise<TeamInvitation> {
-    return api.post(`/api/teams/${id}/invite`, { user_id: userId })
+  invite(id: string, email: string): Promise<TeamInvitation> {
+    return api.post(`/api/teams/${id}/invite`, { email })
   },
 
   listMembers(id: string): Promise<TeamMember[]> {

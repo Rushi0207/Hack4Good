@@ -22,7 +22,7 @@ function TeamDetail() {
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState<string | null>(null)
-  const [inviteUserId, setInviteUserId] = useState('')
+  const [inviteEmail, setInviteEmail] = useState('')
   const [inviting, setInviting] = useState(false)
   const [inviteMsg, setInviteMsg] = useState<string | null>(null)
 
@@ -41,15 +41,17 @@ function TeamDetail() {
 
   async function handleInvite(e: React.FormEvent) {
     e.preventDefault()
-    if (!inviteUserId.trim()) return
+    if (!inviteEmail.trim()) return
     setInviting(true); setInviteMsg(null)
     try {
-      await teamsApi.invite(id, inviteUserId.trim())
-      setInviteMsg('Invitation sent.'); setInviteUserId('')
+      await teamsApi.invite(id, inviteEmail.trim())
+      setInviteMsg('Invitation sent! They will receive an email and an in-app notification.')
+      setInviteEmail('')
     } catch (err: unknown) {
       setInviteMsg(err instanceof Error ? err.message : 'Failed to send invitation.')
     } finally {
-      setInviting(false) }
+      setInviting(false)
+    }
   }
 
   async function handleRemove(userId: string) {
@@ -124,24 +126,29 @@ function TeamDetail() {
 
             {/* Invite form — leaders only */}
             {isLeader && (
-              <form onSubmit={handleInvite} className="mt-5 grid gap-3">
-                <p className="text-sm font-medium">Invite a member</p>
+              <form onSubmit={handleInvite} className="mt-5 grid gap-3 border-t border-border pt-5">
+                <p className="text-sm font-medium">Invite a member by email</p>
                 {inviteMsg && (
-                  <p className={`text-sm ${inviteMsg === 'Invitation sent.' ? 'text-emerald-600' : 'text-destructive'}`}>
+                  <p className={`text-sm ${inviteMsg.startsWith('Invitation sent') ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive'}`}>
                     {inviteMsg}
                   </p>
                 )}
                 <div className="flex gap-2">
                   <input
-                    value={inviteUserId}
-                    onChange={(e) => setInviteUserId(e.target.value)}
-                    placeholder="User ID to invite"
+                    type="email"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    placeholder="participant@example.com"
+                    required
                     className="h-10 flex-1 rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
                   />
                   <Button type="submit" size="sm" disabled={inviting}>
                     <UserPlus className="size-4" />{inviting ? '…' : 'Invite'}
                   </Button>
                 </div>
+                <p className="text-xs text-muted-foreground">
+                  They must already have a Hack4Good account. They will receive an in-app notification and an email.
+                </p>
               </form>
             )}
           </SectionCard>
