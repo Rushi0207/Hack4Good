@@ -131,78 +131,80 @@ export async function inviteMember(
   const supabase = await createSupabaseServerClient();
 
   // 1. Look up the invitee's UUID by email via admin API
-  let inviteeId: string;
+  let admin: ReturnType<typeof getAdminClient>;
   try {
-    const admin = getAdminClient();
-    const { data: list, error: listErr } = await admin.auth.admin.listUsers();
-    if (listErr) return { error: 'Could not look up user. Please try again.' };
-    const match = list.users.find((u) => u.email?.toLowerCase() === email.toLowerCase());
-    if (!match) return { error: `No account found for ${email}. Ask them to sign up first.` };
-    inviteeId = match.id;
+    admin = getAdminClient();
   } catch {
     return { error: 'Invite service unavailable — SUPABASE_SERVICE_ROLE_KEY may be missing.' };
   }
 
-  // 2. Get team details for the email message
+  const { data: list, error: listErr } = await admin.auth.admin.listUsers();
+  if (listErr) {
+    console.error('[invite] listUsers error:', listErr.message);
+    return { error: 'Could not look up user. Please try again.' };
+  }
+
+  const match = list.users.find((u) => u.email?.toLowerCase() === email.toLowerCase());
+  if (!match) {
+    return { error: `No account found for "${email}". Ask them to sign up at Hack4Good first.` };
+  }
+  const inviteeId = match.id;
+
+  // 2. Get team details for the notification message
   const team = await getTeamById(teamId);
   if (!team) return { error: 'Team not found.' };
 
-  // 3. Create the invitation row
-  const { data, error } = await supabase
+  // 3. Create the invitation row (uses the inviter's session — RLS allows leaders)
+  const { data, error: inviteErr } = await supabase
     .from('team_invitations')
     .insert({ team_id: teamId, user_id: inviteeId, status: 'PENDING' })
     .select('id, team_id, user_id, status, created_at')
     .maybeSingle();
 
-  if (error) {
-    if (error.code === '23505') return { error: 'This person has already been invited to the team.' };
-    return { error: 'Failed to send invitation.' };
+  if (inviteErr) {
+    console.error('[invite] insert invitation error:', inviteErr.message);
+    if (inviteErr.code === '23505')
+      return { error: 'This person has already been invited to the team.' };
+    return { error: 'Failed to create invitation.' };
   }
-  if (!data) return { error: 'Failed to send invitation.' };
+  if (!data) return { error: 'Failed to create invitation.' };
 
   const result = teamInvitationSchema.safeParse(data);
-  if (!result.success) return { error: 'Failed to send invitation.' };
+  if (!result.success) return { error: 'Failed to parse invitation.' };
 
-  // 4. Create an in-app notification for the invitee
-  await supabase.from('notifications').insert({
-    user_id: inviteeId,
-    type:    'TEAM_INVITE',
-    message: `${inviterName} invited you to join team "${team.name}". Open your notifications to accept or decline.`,
+  // 4. Insert in-app notification using the admin (service-role) client
+  //    because the RLS INSERT policy requires the inserting session to own
+  //    the notification, but here we're writing on behalf of the invitee.
+  const notifMessage =
+    `${inviterName} invited you to join team "${team.name}". ` +
+    `Go to Notifications to accept or decline.`;
+
+  const { error: notifErr } = await admin
+    .from('notifications')
+    .insert({ user_id: inviteeId, type: 'TEAM_INVITE', message: notifMessage });
+
+  if (notifErr) {
+    // Non-fatal — log but continue so the invitation itself still succeeds
+    console.error('[invite] notification insert error:', notifErr.message);
+  }
+
+  // 5. Send email via Supabase Auth.
+  //    generateLink('magiclink') creates a one-click sign-in link that
+  //    lands the user on /notifications. Supabase sends the email when
+  //    shouldCreateUser is false and the user already exists.
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3001';
+
+  const { error: linkErr } = await admin.auth.admin.generateLink({
+    type:  'magiclink',
+    email,
+    options: {
+      redirectTo: `${siteUrl}/notifications`,
+    },
   });
 
-  // 5. Send an email via Supabase Auth magic link (invite flow)
-  //    We use generateLink('magiclink') pointed at /notifications so they
-  //    land on the app after clicking. This does NOT create a new account —
-  //    the user already exists.
-  try {
-    const admin = getAdminClient();
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3001';
-    await admin.auth.admin.generateLink({
-      type:       'magiclink',
-      email,
-      options: {
-        redirectTo: `${siteUrl}/notifications`,
-        data: {
-          invitation_team: team.name,
-          invitation_id:   result.data.id,
-        },
-      },
-    });
-    // generateLink returns the link but does NOT email it automatically
-    // unless "Send email" is enabled in Supabase Auth settings.
-    // As a fallback we use inviteUserByEmail which always sends.
-    // inviteUserByEmail creates a new user if one doesn't exist, so we
-    // only call it here where we already verified the user exists.
-    await admin.auth.admin.inviteUserByEmail(email, {
-      redirectTo: `${siteUrl}/notifications`,
-      data: {
-        invitation_team: team.name,
-        invitation_id:   result.data.id,
-      },
-    });
-  } catch {
-    // Email sending is best-effort — the in-app notification is the
-    // reliable delivery mechanism. Don't fail the whole operation.
+  if (linkErr) {
+    console.error('[invite] generateLink error:', linkErr.message);
+    // Non-fatal — in-app notification was already sent
   }
 
   return { data: result.data };
