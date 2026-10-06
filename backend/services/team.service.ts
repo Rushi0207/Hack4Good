@@ -210,6 +210,27 @@ export async function inviteMember(
   return { data: result.data };
 }
 
+export async function listMyInvitations(userId: string): Promise<
+  Array<{ id: string; team_id: string; team_name: string; status: string; created_at: string }>
+> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from('team_invitations')
+    .select('id, team_id, status, created_at, teams(name)')
+    .eq('user_id', userId)
+    .eq('status', 'PENDING')
+    .order('created_at', { ascending: false });
+
+  if (error || !data) return [];
+  return data.map((row) => ({
+    id:         row.id,
+    team_id:    row.team_id,
+    team_name:  (row.teams as unknown as { name: string } | null)?.name ?? 'Unknown team',
+    status:     row.status,
+    created_at: row.created_at,
+  }));
+}
+
 export async function respondToInvitation(
   invitationId: string,
   userId: string,
