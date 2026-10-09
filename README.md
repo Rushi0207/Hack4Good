@@ -75,22 +75,25 @@ Supabase (PostgreSQL + RLS)
 | Area | Status |
 |---|---|
 | Database schema + RLS + triggers | ✅ Complete |
-| Auth provisioning | ✅ Complete |
-| Session handling | ✅ Complete |
+| All migrations (000000–000005) | ✅ Written — apply with `npx supabase db push` |
+| Auth (sign-up, sign-in, sign-out, reset password) | ✅ Complete |
+| Bearer token cross-origin auth | ✅ Complete |
 | Role authorization | ✅ Complete |
-| All API routes — 42 routes | ✅ Complete |
-| Unit tests — 68 tests | ✅ Complete |
-| Backend production build | ✅ Clean |
-| Frontend — all pages connected to real API | ✅ Complete |
+| All API routes (43 routes) | ✅ Complete |
+| Unit tests (68 tests) | ✅ Complete |
+| First-admin bootstrap script | ✅ Complete |
+| Frontend — all 23 pages connected to real API | ✅ Complete |
 | Frontend TypeScript | ✅ 0 errors |
-| Supabase Auth (sign-up / sign-in / sign-out) | ✅ Complete |
-| Typed API client layer | ✅ Complete |
+| CORS proxy (Next.js 16 `proxy.ts`) | ✅ Complete |
+| Create hackathon modal + status transitions | ✅ Complete |
+| Submit problem modal | ✅ Complete |
+| Create team modal | ✅ Complete |
+| Team invite by email + in-app + email notification | ✅ Complete |
+| Invitation Accept/Decline UI | ✅ Complete |
+| Teams visibility restricted by RLS | ✅ Migration written — apply with db push |
 | Seed data script | 🔲 Pending |
 | Playwright E2E tests | 🔲 Pending |
-| File upload — Supabase Storage | 🔲 Pending |
-| Detail pages (`/hackathons/[id]`, `/problems/[id]`, etc.) | 🔲 Pending |
-| Admin panel UI | 🔲 Pending |
-| Judge dashboard UI | 🔲 Pending |
+| File upload (Supabase Storage) | 🔲 Pending |
 
 ---
 
@@ -330,3 +333,4 @@ frontend/
 4. All new backend routes must validate input with Zod and authorize server-side.
 5. Keep `frontend/lib/api/types.ts` in sync with backend Zod schemas when changing the API.
 6. Add unit tests for any new business rules.
+7. Run `npx supabase db push` after adding a migration.

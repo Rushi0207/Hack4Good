@@ -144,6 +144,7 @@ export interface Team {
   name: string
   description: string | null
   leader_id: string
+  leader_name?: string
   created_at: string
   updated_at: string
 }
@@ -163,6 +164,7 @@ export interface TeamMember {
   id: string
   team_id: string
   user_id: string
+  full_name?: string
   joined_at: string
 }
 

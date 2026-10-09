@@ -100,14 +100,19 @@ function TeamDetail() {
               ? <p className="text-sm text-muted-foreground">No members yet.</p>
               : (
                 <div className="grid gap-3">
-                  {members.map((m) => (
+                  {members.map((m) => {
+                    const displayName =
+                      m.full_name?.trim()
+                      || (m.user_id === user?.id ? (profile?.full_name?.trim() || 'You') : null)
+                      || 'Unknown member'
+                    return (
                     <div key={m.id} className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
                         <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
-                          {getInitials(m.user_id.slice(0, 6))}
+                          {getInitials(displayName)}
                         </span>
                         <div>
-                          <p className="text-sm font-medium">{m.user_id.slice(0, 12)}…</p>
+                          <p className="text-sm font-medium">{displayName}</p>
                           {m.user_id === team.leader_id && (
                             <p className="text-xs text-primary">Team leader</p>
                           )}
@@ -119,7 +124,8 @@ function TeamDetail() {
                         </Button>
                       )}
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )
             }
@@ -186,6 +192,14 @@ function TeamDetail() {
         <div className="grid gap-6 self-start">
           <SectionCard title="Team info">
             <div className="grid gap-3 text-sm">
+              <div className="flex justify-between gap-3">
+                <span className="text-muted-foreground">Leader</span>
+                <span className="text-right font-medium">
+                  {team.leader_name?.trim()
+                    || members.find((m) => m.user_id === team.leader_id)?.full_name?.trim()
+                    || 'Unknown'}
+                </span>
+              </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Created</span>
                 <span>{new Date(team.created_at).toLocaleDateString()}</span>

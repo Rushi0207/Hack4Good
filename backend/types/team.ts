@@ -9,6 +9,7 @@ export const teamSchema = z.object({
   name: z.string(),
   description: z.string().nullable(),
   leader_id: z.uuid(),
+  leader_name: z.string().optional(),
   created_at: z.string(),
   updated_at: z.string(),
 });
@@ -45,6 +46,7 @@ export const teamMemberSchema = z.object({
   id: z.uuid(),
   team_id: z.uuid(),
   user_id: z.uuid(),
+  full_name: z.string().optional(),
   joined_at: z.string(),
 });
 export type TeamMember = z.infer<typeof teamMemberSchema>;

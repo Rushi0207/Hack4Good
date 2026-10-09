@@ -193,7 +193,10 @@ export default function TeamsPage() {
                 <p className="text-sm text-muted-foreground">{t.description}</p>
               )}
               <p className="mt-2 text-sm text-muted-foreground">
-                Leader: <span className="font-medium text-foreground">{t.leader_id.slice(0, 8)}…</span>
+                Leader:{' '}
+                <span className="font-medium text-foreground">
+                  {t.leader_name?.trim() || 'Unknown'}
+                </span>
               </p>
               <Button className="mt-5 w-full" variant="outline" asChild>
                 <Link href={`/teams/${t.id}`}>View team</Link>

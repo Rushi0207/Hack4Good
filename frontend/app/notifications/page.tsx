@@ -31,7 +31,10 @@ export default function NotificationsPage() {
     if (!user) return
     Promise.all([
       notificationsApi.list().catch(() => [] as Notification[]),
-      invitationsApi.listMine().catch(() => [] as PendingInvitation[]),
+      invitationsApi.listMine().catch((err: unknown) => {
+        console.error('[notifications] listMine failed:', err)
+        return [] as PendingInvitation[]
+      }),
     ]).then(([n, i]) => {
       setNotifications(n)
       setInvitations(i)

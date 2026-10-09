@@ -12,6 +12,23 @@ import {
 } from '@/types/team';
 
 const TEAM_FIELDS = 'id, hackathon_id, name, description, leader_id, created_at, updated_at';
+const TEAM_WITH_LEADER =
+  'id, hackathon_id, name, description, leader_id, created_at, updated_at, profiles!leader_id(full_name)';
+
+function mapTeamRow(row: Record<string, unknown>): Team | null {
+  const profile = row['profiles'] as { full_name: string } | null | undefined;
+  const result = teamSchema.safeParse({
+    id: row['id'],
+    hackathon_id: row['hackathon_id'],
+    name: row['name'],
+    description: row['description'],
+    leader_id: row['leader_id'],
+    created_at: row['created_at'],
+    updated_at: row['updated_at'],
+    leader_name: profile?.full_name,
+  });
+  return result.success ? result.data : null;
+}
 
 /** Service-role client — used only for Auth admin look-ups (email → uuid).
  *  Never used to bypass RLS on data tables. */
@@ -32,7 +49,7 @@ export async function listTeams(opts: {
   const supabase = await createSupabaseServerClient();
   let q = supabase
     .from('teams')
-    .select(TEAM_FIELDS)
+    .select(TEAM_WITH_LEADER)
     .order('created_at', { ascending: false })
     .range(opts.offset, opts.offset + opts.limit - 1);
 
@@ -40,20 +57,21 @@ export async function listTeams(opts: {
 
   const { data, error } = await q;
   if (error || !data) return [];
-  return data.map((row) => teamSchema.parse(row));
+  return data
+    .map((row) => mapTeamRow(row as Record<string, unknown>))
+    .filter((t): t is Team => t !== null);
 }
 
 export async function getTeamById(id: string): Promise<Team | null> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from('teams')
-    .select(TEAM_FIELDS)
+    .select(TEAM_WITH_LEADER)
     .eq('id', id)
     .maybeSingle();
 
   if (error || !data) return null;
-  const result = teamSchema.safeParse(data);
-  return result.success ? result.data : null;
+  return mapTeamRow(data as Record<string, unknown>);
 }
 
 export async function createTeam(
@@ -78,8 +96,25 @@ export async function createTeam(
   }
 
   if (!data) return { error: 'Failed to create team.' };
-  const result = teamSchema.safeParse(data);
-  return result.success ? { data: result.data } : { error: 'Failed to create team.' };
+
+  // Leader must also be a team_members row (RLS + size checks + projects depend on it)
+  const { error: memberErr } = await supabase
+    .from('team_members')
+    .insert({ team_id: data.id, user_id: userId });
+
+  if (memberErr) {
+    console.error('[createTeam] leader membership error:', memberErr.message);
+    await supabase.from('teams').delete().eq('id', data.id);
+    if (memberErr.message?.includes('must be registered'))
+      return { error: 'You must be registered for the hackathon to create a team.' };
+    if (memberErr.message?.includes('Only participants'))
+      return { error: 'Only participants can lead teams.' };
+    return { error: 'Failed to create team.' };
+  }
+
+  // Re-fetch with leader name for a consistent response shape
+  const team = await getTeamById(data.id);
+  return team ? { data: team } : { error: 'Failed to create team.' };
 }
 
 export async function updateTeam(
@@ -93,16 +128,13 @@ export async function updateTeam(
 
   if (Object.keys(patch).length === 0) return getTeamById(id);
 
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from('teams')
     .update(patch)
-    .eq('id', id)
-    .select(TEAM_FIELDS)
-    .maybeSingle();
+    .eq('id', id);
 
-  if (error || !data) return null;
-  const result = teamSchema.safeParse(data);
-  return result.success ? result.data : null;
+  if (error) return null;
+  return getTeamById(id);
 }
 
 export async function deleteTeam(id: string): Promise<boolean> {
@@ -115,12 +147,27 @@ export async function listTeamMembers(teamId: string): Promise<TeamMember[]> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from('team_members')
-    .select('id, team_id, user_id, joined_at')
+    .select('id, team_id, user_id, joined_at, profiles(full_name)')
     .eq('team_id', teamId)
     .order('joined_at', { ascending: true });
 
-  if (error || !data) return [];
-  return data.map((row) => teamMemberSchema.parse(row));
+  if (error || !data) {
+    if (error) console.error('[listTeamMembers] error:', error.message);
+    return [];
+  }
+  return data
+    .map((row) => {
+      const profile = row.profiles as { full_name: string } | null;
+      return teamMemberSchema.safeParse({
+        id: row.id,
+        team_id: row.team_id,
+        user_id: row.user_id,
+        joined_at: row.joined_at,
+        full_name: profile?.full_name,
+      });
+    })
+    .filter((r) => r.success)
+    .map((r) => r.data);
 }
 
 export async function inviteMember(
@@ -153,6 +200,32 @@ export async function inviteMember(
   // 2. Get team details for the notification message
   const team = await getTeamById(teamId);
   if (!team) return { error: 'Team not found.' };
+
+  // 2b. Invitee must be a PARTICIPANT registered for this hackathon
+  //     (accept path enforces the same via validate_team_member — fail early here)
+  const { data: inviteeProfile } = await admin
+    .from('profiles')
+    .select('role')
+    .eq('id', inviteeId)
+    .maybeSingle();
+
+  if (!inviteeProfile || inviteeProfile.role !== 'PARTICIPANT') {
+    return { error: 'Only participants can be invited to teams.' };
+  }
+
+  const { data: registration } = await admin
+    .from('hackathon_registrations')
+    .select('user_id')
+    .eq('hackathon_id', team.hackathon_id)
+    .eq('user_id', inviteeId)
+    .maybeSingle();
+
+  if (!registration) {
+    return {
+      error:
+        'This person must register for the hackathon before they can be invited.',
+    };
+  }
 
   // 3. Create the invitation row (uses the inviter's session — RLS allows leaders)
   const { data, error: inviteErr } = await supabase
@@ -221,7 +294,11 @@ export async function listMyInvitations(userId: string): Promise<
     .eq('status', 'PENDING')
     .order('created_at', { ascending: false });
 
-  if (error || !data) return [];
+  if (error) {
+    console.error('[listMyInvitations] error:', error.message);
+    return [];
+  }
+  if (!data) return [];
   return data.map((row) => ({
     id:         row.id,
     team_id:    row.team_id,
@@ -250,12 +327,22 @@ export async function respondToInvitation(
   if (inv.status !== 'PENDING') return { error: 'Invitation is no longer pending.' };
 
   const newStatus = accept ? 'ACCEPTED' : 'REJECTED';
-  const { error: updateErr } = await supabase
+  const { data: updated, error: updateErr } = await supabase
     .from('team_invitations')
     .update({ status: newStatus })
-    .eq('id', invitationId);
+    .eq('id', invitationId)
+    .eq('user_id', userId)
+    .eq('status', 'PENDING')
+    .select('id')
+    .maybeSingle();
 
-  if (updateErr) return { error: 'Failed to update invitation.' };
+  if (updateErr) {
+    console.error('[respondToInvitation] update error:', updateErr.message);
+    return { error: 'Failed to update invitation.' };
+  }
+  if (!updated) {
+    return { error: 'Failed to update invitation. Please refresh and try again.' };
+  }
 
   // If accepted, add to team_members
   if (accept) {
@@ -264,6 +351,7 @@ export async function respondToInvitation(
       .insert({ team_id: inv.team_id, user_id: userId });
 
     if (memberErr) {
+      console.error('[respondToInvitation] member insert error:', memberErr.message);
       // Rollback status change
       await supabase
         .from('team_invitations')
@@ -273,6 +361,10 @@ export async function respondToInvitation(
         return { error: 'You already belong to a team in this hackathon.' };
       if (memberErr.message?.includes('Team size cannot exceed'))
         return { error: 'Team is full.' };
+      if (memberErr.message?.includes('must be registered'))
+        return { error: 'You must register for the hackathon before joining a team.' };
+      if (memberErr.message?.includes('Only participants'))
+        return { error: 'Only participants can join teams.' };
       return { error: 'Failed to join team.' };
     }
   }
